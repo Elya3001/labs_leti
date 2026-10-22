@@ -165,9 +165,6 @@ def interpret(expression):
                 if expression[i] == '(':
                     last_open = i
 
-            if last_open == -1:
-                raise Exception("Лишняя закрывающая скобка")
-
             # Поиск первой закрывающей после неё
             close_idx = -1
             for i in range(last_open + 1, len(expression)):
