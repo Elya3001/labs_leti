@@ -1,0 +1,229 @@
+import math
+
+
+def skip_spaces(s, pos):
+    """Пропуск пробелов, возврат новой позиции (pos)"""
+    while pos < len(s) and s[pos].isspace():
+        pos += 1
+    return pos
+
+
+def read_number(s, pos):
+    """Чтение числа (целое или дробное), возврат (значение, новая позиция)"""
+    start = pos
+    dot_count = 0
+
+    while pos < len(s) and (s[pos].isdigit() or s[pos] == '.'):
+        if s[pos] == '.':
+            dot_count += 1
+            if dot_count > 1:
+                raise Exception("Несколько точек в числе")
+        pos += 1
+
+    num_str = s[start:pos]
+    if '.' in num_str:
+        return float(num_str), pos
+    else:
+        return int(num_str), pos
+
+
+def read_function(s, pos):
+    """Чтение имени функции, возврат (имя, новая позиция)"""
+    start = pos
+    while pos < len(s) and s[pos].isalpha():
+        pos += 1
+
+    func_name = s[start:pos]
+    if func_name not in ("sqrt", "exp"):
+        raise Exception(f"Неизвестная функция: {func_name}")
+
+    return func_name, pos
+
+
+##Вычисление простого выражения (без внегних скобок)
+def compute_simple(s):
+    """Поддерживает: числа, +, -, *, /, sqrt(), exp()"""
+
+    s = s.replace(' ', '')
+
+    # 1. Вычисление функции sqrt() и exp() изнутри наружу
+    while 'sqrt(' in s or 'exp(' in s:
+        # Поиск первого вхождение функции
+        idx_sqrt = s.find('sqrt(')
+        idx_exp = s.find('exp(')
+
+        if idx_sqrt == -1 and idx_exp == -1: # не нашли ни один
+            break
+        elif idx_sqrt == -1:
+            idx = idx_exp
+            func_name = "exp"
+            prefix_len = 4  # len("exp(")
+        elif idx_exp == -1:
+            idx = idx_sqrt
+            func_name = "sqrt"
+            prefix_len = 5  # len("sqrt(")
+        # поиск того, какая функция за какой идет
+        elif idx_sqrt < idx_exp:
+            idx = idx_sqrt
+            func_name = "sqrt"
+            prefix_len = 5
+        else:
+            idx = idx_exp
+            func_name = "exp"
+            prefix_len = 4
+
+        # Поиск парной закрывающей скобки функций
+        d = 1
+        close_idx = idx + prefix_len
+        while close_idx < len(s) and d > 0:
+            if s[close_idx] == '(':
+                d += 1
+            elif s[close_idx] == ')':
+                d -= 1
+            if d > 0:
+                close_idx += 1
+
+        if d != 0:
+            raise Exception(f"Не хватает ')' для функции {func_name}")
+
+        arg_str = s[idx + prefix_len:close_idx]
+        arg = compute_simple(arg_str)  # рекурсивное вычисление аргумента
+
+        if func_name == "sqrt":
+            if arg < 0:
+                raise Exception("Корень из отрицательного числа")
+            result = math.sqrt(arg)
+        else:
+            result = math.exp(arg)
+
+        s = s[:idx] + str(result) + s[close_idx + 1:]
+
+    # 2. Обработка числа и операторов, используя read_number
+    numbers = []
+    operators = []
+    pos = 0
+
+    # Обработка унарного минуса/плюса в начале
+    if pos < len(s) and s[pos] in '+-':
+        sign = -1 if s[pos] == '-' else 1
+        pos += 1
+        value, pos = read_number(s, pos)
+        numbers.append(sign * value)
+    else:
+        value, pos = read_number(s, pos)
+        numbers.append(value)
+
+    # Чтение остальных операторов и числа
+    while pos < len(s):
+        pos = skip_spaces(s, pos)
+        if pos >= len(s):
+            break
+        op = s[pos]
+        if op not in '+-*/':
+            raise Exception(f"Незнакомый символ: '{op}'")
+        operators.append(op)
+        pos += 1
+        value, pos = read_number(s, pos)
+        numbers.append(value)
+
+    # 3. Сначала умножение и деление
+    i = 0
+    while i < len(operators):
+        if operators[i] == '*':
+            numbers[i] = numbers[i] * numbers[i + 1]
+            del numbers[i + 1]
+            del operators[i]
+        elif operators[i] == '/':
+            if numbers[i + 1] == 0:
+                raise Exception("Нельзя делить на ноль!")
+            numbers[i] = numbers[i] / numbers[i + 1]
+            del numbers[i + 1]
+            del operators[i]
+        else:
+            i += 1
+
+    # 4. Потом сложение и вычитание
+    result = numbers[0]
+    for i in range(len(operators)):
+        if operators[i] == '+':
+            result = result + numbers[i + 1]
+        else:
+            result = result - numbers[i + 1]
+
+    return result
+
+
+# Главная функция: вычисление скобок изнутри наружу
+
+def interpret(expression):
+    try:
+        # Пока есть скобки — ищет самые внутренние и вычисляет
+        while '(' in expression:
+            # Поиск последней открывающей скобки (самая внутренняя)
+            last_open = -1
+            for i in range(len(expression)):
+                if expression[i] == '(':
+                    last_open = i
+
+            if last_open == -1:
+                raise Exception("Лишняя закрывающая скобка")
+
+            # Поиск первой закрывающей после неё
+            close_idx = -1
+            for i in range(last_open + 1, len(expression)):
+                if expression[i] == ')':
+                    close_idx = i
+                    break
+
+            if close_idx == -1:
+                raise Exception("Не хватает закрывающей скобки ')'")
+
+            # Извлечение содержимого скобок и вычисление
+            inner = expression[last_open + 1:close_idx]
+            result = compute_simple(inner)
+
+            # Замена скобки с выражением на результат
+            expression = expression[:last_open] + str(result) + expression[close_idx + 1:]
+
+        # Проверка лишних закрывающих скобок
+        if ')' in expression:
+            raise Exception("Лишняя закрывающая скобка ')'")
+
+        # Вычисление оставшегося выражения
+        return compute_simple(expression)
+
+    except Exception as e:
+        return f"Ошибка: {e}"
+
+
+# интерфейс
+def main():
+    print(" " * 60)
+    print("  ИНТЕРПРЕТАТОР АРИФМЕТИЧЕСКИХ ВЫРАЖЕНИЙ")
+    print(" " * 60)
+    print("Поддерживаются: +, -, *, /, скобки (), sqrt(x), exp(x)")
+    print("Для выхода введите: exit или quit")
+    print(" " * 60)
+
+    while True:
+        print()
+        try:
+            expression = input("Введите выражение: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nВыход.")
+            break
+
+        if expression.lower() in ("0"):
+            print("Выход.")
+            break
+
+        if not expression:
+            print("Пустой ввод.")
+            continue
+
+        result = interpret(expression)
+        print(f"Результат: {result}")
+
+
+if __name__ == "__main__":
+    main()
